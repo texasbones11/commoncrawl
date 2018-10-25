@@ -1,0 +1,10 @@
+#install mariadb-server
+sudo apt-get install mariadb-server libmysql-java
+ln -s /usr/share/java/mysql-connector-java.jar /usr/local/hive/lib/mysql-connector-java.jar
+
+sudo mysql
+create user 'hiveuser'@'%' identified by 'hivehive';
+grant all on *.* to 'hiveuser'@localhost identified by 'hivehive';
+create database metastore;
+use metastore;
+source /usr/local/hive/scripts/metastore/upgrade/mysql/hive-schema-3.0.0.mysql.sql;
