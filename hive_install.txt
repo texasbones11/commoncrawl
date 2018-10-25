@@ -1,0 +1,272 @@
+#apache hive
+##external tables for the s3 links
+##Hive sits on top of hadoop, then you deal only with hive
+##set most searched fields to be a partition to improve performance
+
+#install hive:
+##download
+wget http://apache.mirrors.ionfish.org/hive/hive-3.0.0/apache-hive-3.0.0-bin.tar.gz
+##install
+tar -xzvf apache-hive-3.0.0-bin.tar.gz
+sudo mv apache-hive-3.0.0-bin /usr/local/hive
+
+
+#set hive environment:
+##update path
+vim ~/.bashrc
+export HIVE_HOME=/usr/local/hive
+export PATH=$PATH:$HIVE_HOME/bin
+#export CLASSPATH=$CLASSPATH:/usr/local/Hadoop/lib/*:.
+#export CLASSPATH=$CLASSPATH:/usr/local/hive/lib/*:.
+##source
+source ~/.bashrc
+
+##fix conflicts after running "hive"
+mv /usr/local/hive/lib/log4j-slf4j-impl-2.10.0.jar ~
+
+cd /usr/local/hive/conf
+cp hive-default.xml.template  hive-site.xml
+cp hive-env.sh.template hive-env.sh
+
+vi /usr/local/hive/conf/hive-env.sh
+export HADOOP_HEAPSIZE=4096
+
+sudo mkdir -p /user/hive/warehouse
+sudo chmod 777 /user/hive/warehouse
+vi /usr/local/hive/conf/hive-site.xml
+
+put in beginning of file:
+  <property>
+    <name>system:java.io.tmpdir</name>
+    <value>/tmp/hive/java</value>
+  </property>
+  <property>
+    <name>system:user.name</name>
+    <value>${user.name}</value>
+  </property>
+##################
+add to bottom of file
+##################
+  <property>
+     <name>javax.jdo.option.ConnectionURL</name>
+     <value>jdbc:mysql://localhost/metastore?createDatabaseIfNotExist=true</value>
+     <description>metadata is stored in a MySQL server</description>
+  </property>
+  <property>
+     <name>javax.jdo.option.ConnectionDriverName</name>
+     <value>com.mysql.jdbc.Driver</value>
+     <description>MySQL JDBC driver class</description>
+  </property>
+  <property>
+     <name>javax.jdo.option.ConnectionUserName</name>
+     <value>hiveuser</value>
+     <description>user name for connecting to mysql server</description>
+  </property>
+  <property>
+     <name>javax.jdo.option.ConnectionPassword</name>
+     <value>hivehive</value>
+     <description>password for connecting to mysql server</description>
+  </property>
+
+#remove bad characters on line 3221
+sudo chmod 777 /tmp/hive
+
+##install JSON SerDe binaries into hadoop https://github.com/rcongiu/Hive-JSON-Serde
+wget http://www.congiu.net/hive-json-serde/1.3.8/hdp23/json-serde-1.3.8-jar-with-dependencies.jar
+wget http://www.congiu.net/hive-json-serde/1.3.8/hdp23/json-udf-1.3.8-jar-with-dependencies.jar
+mv json*.jar /usr/local/hive/lib
+
+#add jar
+add jar /usr/local/hive/lib/json-serde-1.3.8-jar-with-dependencies.jar;
+#create database
+CREATE DATABASE crawl;
+#add external table
+#####JSON array
+add jar /usr/local/hive/lib/json-serde-1.3.8-jar-with-dependencies.jar;
+CREATE EXTERNAL TABLE `crawl`(
+  `Container` array<string>,
+  `Envelope` array<string>
+)
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+WITH SERDEPROPERTIES ( "ignore.malformed.json" = "true")
+STORED AS TEXTFILE
+LOCATION
+  's3a://commoncrawl/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/';
+
+
+struct<Format:string,`WARC-Header-Length`:string>
+struct<Filename:string,Compressed:string,Offset:string>
+,`Actual-Content-Length`:string,`Block-Digest`:string
+
+####JSON string
+CREATE EXTERNAL TABLE `crawl2`(
+  `Container` string,
+  `Envelope` string
+)
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+WITH SERDEPROPERTIES ( "ignore.malformed.json" = "true")
+STORED AS TEXTFILE
+LOCATION
+  's3a://commoncrawl/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/';
+
+
+#test
+select * from crawl;
+
+#hive logs are in /tmp/wjones
+############################################################
+#elastic search
+
+#elastic search solution:
+https://aws.amazon.com/blogs/big-data/indexing-common-crawl-metadata-on-amazon-emr-using-cascading-and-elasticsearch/
+##github:
+https://github.com/aws-samples/aws-big-data-blog/tree/master/aws-blog-elasticsearch-cascading-commoncrawl/commoncrawl.cascading.elasticsearch
+
+#create indexes 
+https://github.com/aws-samples/aws-big-data-blog/blob/master/aws-blog-elasticsearch-cascading-commoncrawl/commoncrawl.cascading.elasticsearch/src/main/java/com/amazonaws/bigdatablog/indexcommoncrawl/CommonCrawlIndex.java
+
+#install
+wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-6.2.4.tar.gz
+tar -xzf elasticsearch-6.2.4.tar.gz
+sudo mv elasticsearch-6.2.4 /usr/local/elasticsearch
+
+vim ~/.bashrc
+export ES_HOME=/usr/local/elasticsearch
+export PATH=$PATH:$ES_HOME/bin
+
+sudo vi /etc/security/limits.conf
+*    hard        nofile          65536
+*    soft        nofile          65536
+
+sudo vi /etc/systemd/user.conf
+DefaultLimitNOFILE=65536
+
+sudo vi /etc/systemd/system.conf
+DefaultLimitNOFILE=65536
+
+#start elasticsearch
+elasticsearch
+
+#download jar
+wget http://central.maven.org/maven2/org/elasticsearch/elasticsearch-hadoop/6.2.4/elasticsearch-hadoop-6.2.4.jar
+mv elasticsearch-hadoop-6.2.4.jar /usr/local/hive/lib/
+#hive connections
+vi /usr/local/hive/conf/hive-site.xml
+<property>
+  <name>hive.aux.jars.path</name>
+  <value>/usr/local/hive/lib/elasticsearch-hadoop-6.2.4.jar</value>
+  <description>A comma separated list (with no spaces) of the jar files</description>
+</property>
+
+#hive
+ADD JAR /usr/local/hive/lib/elasticsearch-hadoop-6.2.4.jar;
+
+#create table
+CREATE EXTERNAL TABLE elastic (data STRING)
+STORED BY 'org.elasticsearch.hadoop.hive.EsStorageHandler'
+TBLPROPERTIES('es.nodes' = 'localhost', 'es.resource' = 'elastic/Container', 'es.input.json' = 'yes');
+
+#inset indexes into table
+INSERT OVERWRITE TABLE elastic
+select * from crawl;
+
+#test
+select * from elastic limit 10;
+
+TBLPROPERTIES('es.nodes' = 'localhost', 'es.resource' = 'elastic/Container', 'es.input.json' = 'yes');
+
+######################################
+#STart hive
+mkdir /tmp/hive
+chmod 777 /tmp/hive
+hive
+
+show tables;
+######################################
+#SMALL DATASET SLOW (2 seconds)
+cd ~
+wget https://commoncrawl.s3.amazonaws.com/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/CC-MAIN-20180419091546-20180419111546-00000.warc.wat.gz
+#(don't have to unzip)
+
+hive
+
+CREATE EXTERNAL TABLE `crawlDemoSmall`(
+  `Container` string,
+  `Envelope` string
+)
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+WITH SERDEPROPERTIES ( "ignore.malformed.json" = "true")
+STORED AS TEXTFILE
+LOCATION
+  '/hive/demo';
+
+LOAD DATA INPATH '/home/wjones/CC-MAIN-20180419091546-20180419111546-00000.warc.wat.gz' INTO TABLE crawlDemoSmall;
+
+#search: yellow-seabird-bb-inn
+select Envelope from crawlDemoSmall where instr(Envelope, 'yellowseabird') != 0;
+######################################
+#SMALL DATASET FAST(0.8 seconds)
+###Regex test
+cd ~
+wget https://commoncrawl.s3.amazonaws.com/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/CC-MAIN-20180419091546-20180419111546-00000.warc.wat.gz
+
+hive
+
+CREATE EXTERNAL TABLE `crawlRegexDemo`(
+  `line` STRING
+)
+ROW FORMAT SERDE 
+  'org.apache.hadoop.hive.serde2.RegexSerDe'
+WITH SERDEPROPERTIES (
+  'input.regex' = '(^\\{\\"Container\\".*$)'
+)
+STORED AS TEXTFILE
+LOCATION
+  '/hive/demo';
+
+LOAD DATA INPATH '/home/wjones/CC-MAIN-20180419091546-20180419111546-00000.warc.wat.gz' INTO TABLE crawlRegexDemo;
+
+#search: yellow-seabird-bb-inn
+select line from crawlRegexDemo where instr(line, 'yellowseabird') != 0;
+######################################
+#FULL DATASET (4 min)
+hive
+
+add jar /usr/local/hive/lib/json-serde-1.3.8-jar-with-dependencies.jar;
+CREATE EXTERNAL TABLE `crawlDemoBigRegex`(
+  `line` STRING
+)
+ROW FORMAT SERDE 
+  'org.apache.hadoop.hive.serde2.RegexSerDe'
+WITH SERDEPROPERTIES (
+  'input.regex' = '(^\\{\\"Container\\".*$)'
+)
+STORED AS TEXTFILE
+LOCATION
+  's3a://commoncrawl/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/';
+
+#show size of query:
+explain select line from crawlDemoBigRegex where instr(line, 'yellowseabird') != 0;
+
+#search:
+select line from crawlDemoBigRegex where instr(line, 'yellowseabird') != 0;
+######################################
+#SLOW FULL DATASET (10 min)
+hive
+
+add jar /usr/local/hive/lib/json-serde-1.3.8-jar-with-dependencies.jar;
+CREATE EXTERNAL TABLE `crawlDemoBig`(
+  `Container` string,
+  `Envelope` string
+)
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+WITH SERDEPROPERTIES ( "ignore.malformed.json" = "true")
+STORED AS TEXTFILE
+LOCATION
+  's3a://commoncrawl/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/';
+
+#show size of query:
+explain select Envelope from crawlDemoBig where instr(Envelope, 'yellowseabird') != 0;
+
+#search:
+select Envelope from crawlDemoBig where instr(Envelope, 'yellowseabird') != 0;
