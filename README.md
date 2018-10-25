@@ -4,6 +4,7 @@
 sudo apt-get install openjdk-8-jre vim
 
 #install hadoop:
+
 [Hadoop Install](../blob/master/hadoop_install.txt
 
 ############################################################
