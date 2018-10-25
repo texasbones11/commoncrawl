@@ -13,4 +13,4 @@
 [Mariadb Install](https://github.com/texasbones11/commoncrawl/blob/master/mariadb_install.txt)
 
 ## run hive queries
-[Mariadb Install](https://github.com/texasbones11/commoncrawl/blob/master/run_hive.txt)
+[Hive Queries](https://github.com/texasbones11/commoncrawl/blob/master/run_hive.txt)
