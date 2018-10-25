@@ -1,0 +1,95 @@
+######################################
+#STart hive
+mkdir /tmp/hive
+chmod 777 /tmp/hive
+hive
+
+show tables;
+######################################
+#SMALL DATASET SLOW (2 seconds)
+cd ~
+wget https://commoncrawl.s3.amazonaws.com/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/CC-MAIN-20180419091546-20180419111546-00000.warc.wat.gz
+#(don't have to unzip)
+
+hive
+
+CREATE EXTERNAL TABLE `crawlDemoSmall`(
+  `Container` string,
+  `Envelope` string
+)
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+WITH SERDEPROPERTIES ( "ignore.malformed.json" = "true")
+STORED AS TEXTFILE
+LOCATION
+  '/hive/demo';
+
+LOAD DATA INPATH '/home/wjones/CC-MAIN-20180419091546-20180419111546-00000.warc.wat.gz' INTO TABLE crawlDemoSmall;
+
+#search: yellow-seabird-bb-inn
+select Envelope from crawlDemoSmall where instr(Envelope, 'yellowseabird') != 0;
+######################################
+#SMALL DATASET FAST(0.8 seconds)
+###Regex test
+cd ~
+wget https://commoncrawl.s3.amazonaws.com/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/CC-MAIN-20180419091546-20180419111546-00000.warc.wat.gz
+
+hive
+
+CREATE EXTERNAL TABLE `crawlRegexDemo`(
+  `line` STRING
+)
+ROW FORMAT SERDE 
+  'org.apache.hadoop.hive.serde2.RegexSerDe'
+WITH SERDEPROPERTIES (
+  'input.regex' = '(^\\{\\"Container\\".*$)'
+)
+STORED AS TEXTFILE
+LOCATION
+  '/hive/demo';
+
+LOAD DATA INPATH '/home/wjones/CC-MAIN-20180419091546-20180419111546-00000.warc.wat.gz' INTO TABLE crawlRegexDemo;
+
+#search: yellow-seabird-bb-inn
+select line from crawlRegexDemo where instr(line, 'yellowseabird') != 0;
+######################################
+#FULL DATASET (4 min)
+hive
+
+add jar /usr/local/hive/lib/json-serde-1.3.8-jar-with-dependencies.jar;
+CREATE EXTERNAL TABLE `crawlDemoBigRegex`(
+  `line` STRING
+)
+ROW FORMAT SERDE 
+  'org.apache.hadoop.hive.serde2.RegexSerDe'
+WITH SERDEPROPERTIES (
+  'input.regex' = '(^\\{\\"Container\\".*$)'
+)
+STORED AS TEXTFILE
+LOCATION
+  's3a://commoncrawl/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/';
+
+#show size of query:
+explain select line from crawlDemoBigRegex where instr(line, 'yellowseabird') != 0;
+
+#search:
+select line from crawlDemoBigRegex where instr(line, 'yellowseabird') != 0;
+######################################
+#SLOW FULL DATASET (10 min)
+hive
+
+add jar /usr/local/hive/lib/json-serde-1.3.8-jar-with-dependencies.jar;
+CREATE EXTERNAL TABLE `crawlDemoBig`(
+  `Container` string,
+  `Envelope` string
+)
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+WITH SERDEPROPERTIES ( "ignore.malformed.json" = "true")
+STORED AS TEXTFILE
+LOCATION
+  's3a://commoncrawl/crawl-data/CC-MAIN-2018-17/segments/1524125936833.6/wat/';
+
+#show size of query:
+explain select Envelope from crawlDemoBig where instr(Envelope, 'yellowseabird') != 0;
+
+#search:
+select Envelope from crawlDemoBig where instr(Envelope, 'yellowseabird') != 0;
